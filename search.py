@@ -45,7 +45,7 @@ def initialize_search_index(openai_api_key: str | None = None):
     mapping   : pd.DataFrame  (index on vector_id)
     pages     : pd.DataFrame  (index on document ID)
     """
-    print("Loading embeding model...")
+    print("Loading embedding model...")
     # choose embedding backend
     if "text-embedding" in config.EMBEDDING_MODEL:
         embeddings = OpenAIEmbeddings(

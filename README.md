@@ -1,111 +1,158 @@
 # TenviRAG
 
-
-A lightweight **research‑assistant platform** that lets you _chat_ with T&E's publication built with the help of LLMs.
-It couples a **FAISS** vector store with a **Streamlit** UI that offers both RAG-powered search and an AI‑powered chat interface.
+TenviRAG is a lightweight research assistant for exploring and analysing Transport & Environment publications.
+It combines a FAISS vector index with a Streamlit interface that supports semantic search, retrieval‑augmented chat, and a set of more specialised exploration modes.
 
 <p align="center">
   <img src="figures/user_experience.gif" alt="Demo animation" width="700">
 </p>
 
----
 
-## ✨ Key Features
+## Overview
 
-| Area | Highlights |
-|------|------------|
-| **Semantic Search** | • Sentence‑Transformer embeddings ('multilingual-e5-small') with multi-language support <br>• Optional exponential **date‑decay** weighting so fresh material floats to the top |
-| **Storage** | • FAISS HNSW index for millisecond retrieval<br>• All vectors + metadata **persisted** on disk |
-| **Streamlit Front‑End** | • Responsive two‑tab layout – **Search** & **Chat**<br>• Clickable results with similarity colouring<br>• Floating chat bar, expert settings sliders |
-| **Retrieval‑Augmented Chat (RAG)** | • Router decides when to query the corpus<br>• Sources block with inline `[1]` citations |
-| **Extensibility** | Simple, modular Python; swap embedding models, adjust ranking, plug‑in new data loaders |
+The application is designed to make a large corpus of policy and research documents easier to navigate. Users can:
 
----
+* search across publications using semantic similarity rather than keywords,
+* ask conversational questions grounded in the underlying documents,
+* explore how topics and positions evolve over time,
+* report issues directly from the interface.
 
-## 🛠 Installation
+The system is intentionally modular and relatively small, so it can be adapted to new document sources, models, or ranking strategies.
 
-### 1. Prerequisites
-* Python ≥ 3.8
-* `pip` package manager
-* (optional) `virtualenv` or `conda`
+## Main features
 
-### 2. Clone & set up
+### Semantic search
+
+* Sentence‑Transformer embeddings (`multilingual-e5-small`) with multilingual support
+* FAISS HNSW index for fast retrieval
+* Optional time‑based decay so more recent publications can be prioritised
+* Configurable number of results and snippet length
+
+### Chat and RAG
+
+* Conversational interface backed by retrieval‑augmented generation
+* The model only queries the document index when needed
+* Answers include inline citations and a list of sources
+* Configurable OpenAI model via the sidebar
+
+### Chronological exploration
+
+* Dedicated “Chronological” view to inspect results year by year
+* Similarity thresholds to filter weak matches
+* Useful for tracking how a topic appears over time
+
+### Position timelines
+
+* A “Position” view that reconstructs how T&E positions on a topic evolve
+* Year‑aware retrieval with per‑year limits and minimum similarity thresholds
+* Cached timelines to avoid recomputation
+
+### Streamlit interface
+
+* Tab‑based layout (Chat, Search, Chronological, Position)
+* Sidebar with expert settings (ranking, decay, snippet length, model choice)
+* API key or password‑based access via the sidebar
+* Reset button to clear chat history without restarting the app
+
+### Bug reporting
+
+* Built‑in bug report dialog (implemented in `bugreport.py`)
+* Users can submit issues directly from the UI
+* Reports are forwarded to GitHub Issues with relevant context
+
+## Installation
+
+### Prerequisites
+
+* Python 3.8 or newer
+* `pip`
+* Optional: `virtualenv` or `conda`
+
+### Clone and set up
+
+- Requires git lfs for the large index that exceeds 100MB
+
 ```bash
 git clone https://github.com/KunkelAlexander/t-e_search_tool.git
 cd t-e_search_tool
-python -m venv venv                 # optional but recommended
-source venv/bin/activate            # Windows: venv\Scripts\activate
+python -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
 ```
 
-### 3. Install dependencies
+### Install dependencies
+
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Configure
-Edit **`config.py`** (paths, model names, index size, etc.).
-At runtime, supply your **OpenAI key** via:
+### Configuration
 
-* the Streamlit sidebar input
+Edit `config.py` to adjust:
 
----
+* paths and cache locations,
+* embedding and language models,
+* ranking and timeline parameters.
 
-## 🚀 Usage
+At runtime, provide an OpenAI API key (or application password) via the Streamlit sidebar.
 
-### 1. Build / update the index
+
+## Usage
+
+### Build or update the index
+
+The notebook below handles PDF ingestion, chunking, embedding, and FAISS indexing:
+
 ```bash
-build_index.ipynb   # scrapes PDFs → embeddings → FAISS
+build_index.ipynb
 ```
-Adjust model, chunk size and filters in `config.py`.
 
-### 2. Launch the UI
+### Launch the application
+
 ```bash
 streamlit run frontend/app.py
 ```
 
-### 3. Search
-*Switch to the **Search** tab, type a query.*
-Results show publication type, date and a colour‑coded match score.
+### Search
 
-### 4. Chat
-Ask conversational questions in the **Chat** tab.
-The assistant will cite snippets (`[1]`) and list full sources below its answer.
+Use the **Search** tab to enter a query and inspect ranked results. Each result shows publication metadata, a similarity score, and a highlighted snippet.
 
----
+### Chat
 
-## ⚙ Expert Settings (in the sidebar)
+Use the **Chat** tab to ask questions in natural language. Answers are grounded in the document corpus and include citations.
 
-| Control | Effect |
-|---------|--------|
-| **# Search Results** | top‑*k* candidates returned from FAISS |
-| **Date Decay α** | how strongly older docs are down‑weighted |
-| **Max Snippet Length** | truncate long excerpts for brevity |
+### Chronological and position views
 
----
+Use the **Chronological** and **Position** tabs to explore how topics or policy positions develop over time, with fine‑grained control over similarity and result limits.
 
-## 🧑‍💻 Project Structure
+### Reporting a bug
+
+Use the in‑app bug report option to submit feedback or errors. Reports are automatically filed as GitHub issues for tracking and follow‑up.
+
+
+## Project structure
 
 ```
-app.py              main entry point
-search.py           implement rag retrieval and chat using langchain
-build_index.ipynb   create faiss vector database and read pdfs
-embeddings/         cached artefacts (index, parquet mapping,…)
-figures/            screenshots / GIFs
+frontend/app.py      Streamlit application
+search.py            Retrieval, ranking, and RAG logic
+bugreport.py         In‑app bug reporting to GitHub Issues
+embeddings/          Cached indices and metadata
+figures/             Screenshots
+assets/              Demo assets
 ```
 
-## 🌱 Roadmap
 
-* Faceted filters (author, year, tag) in the UI
-* Scheduled crawler to auto‑ingest new publications
+## Roadmap
 
----
+* Scheduled ingestion of new publications
+* Additional evaluation and monitoring for retrieval quality
 
-## 📝 License
-[MIT](LICENSE)
 
----
+## License
 
-## 🔖 Disclaimer
-This is a personal side‑project by **Alexander Kunkel**.
-It is **not** an official product of **Transport & Environment** and reflects only the author’s views.
+MIT License (see `LICENSE`).
+
+## Disclaimer
+
+This is a personal side project by Alexander Kunkel.
+It is not an official product of Transport & Environment and does not represent the organisation’s views or policies.
 Use at your own discretion.
