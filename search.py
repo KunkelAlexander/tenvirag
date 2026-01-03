@@ -144,6 +144,8 @@ def merge_snippets(
 # ╭──────────────────────────────────────────────────────────────╮
 # │  2.  semantic search with optional date-decay weighting      │
 # ╰──────────────────────────────────────────────────────────────╯
+
+
 def search_pdfs(
         query: str,
         faiss_index,
@@ -156,7 +158,8 @@ def search_pdfs(
         max_snippet_length: int = 500,
         threshold: float = 0.0,
         year2vec: dict[int, np.ndarray] | None  = None,
-        year: int | None = None
+        year: int | None = None,
+        years_back: int | None = None
     ) -> list[dict]:
     """
     Parameters
@@ -175,17 +178,59 @@ def search_pdfs(
     # ➊ embed & search
     q_vec = embeddings.embed_query(f"query: {query.lower()}")
 
-    if year and year2vec:
-        # ---------- 0) do we have vectors for this year? ----------
+    # ─────────────────────────────────────────────
+    # 1) Multi-year guaranteed retrieval
+    # ─────────────────────────────────────────────
+    if years_back and year2vec:
+        now_year = datetime.now().year
+
+        all_D = []
+        all_I = []
+
+        # A) global top-k
+        Dg, Ig = faiss_index.search(np.array([q_vec]), k)
+        all_D.extend(Dg[0])
+        all_I.extend(Ig[0])
+
+        # B) per-year top-k
+        for y in range(now_year, now_year - years_back, -1):
+            vec_ids = year2vec.get(y)
+            if not vec_ids:
+                continue
+
+            selector = faiss.IDSelectorArray(vec_ids)
+            p = faiss.SearchParametersIVF(sel=selector)
+
+            Dy, Iy = faiss_index.search(
+                np.array([q_vec]),
+                k,
+                params=p
+            )
+
+            all_D.extend(Dy[0])
+            all_I.extend(Iy[0])
+
+        # Convert to FAISS-like arrays
+        D = np.array([all_D])
+        I = np.array([all_I])
+
+    # ─────────────────────────────────────────────
+    # 2) Single-year constrained search
+    # ─────────────────────────────────────────────
+    elif year and year2vec:
         vec_ids = year2vec.get(year)
         if vec_ids is None or len(vec_ids) == 0:
             return []
 
-        selector = faiss.IDSelectorArray(vec_ids)      # or Batch/Bitmap if huge
-        p = faiss.SearchParametersIVF(sel = selector)
-        D, I  = faiss_index.search(np.array([q_vec]), k, params=p)            # D = L2 distances
+        selector = faiss.IDSelectorArray(vec_ids)
+        p = faiss.SearchParametersIVF(sel=selector)
+        D, I = faiss_index.search(np.array([q_vec]), k, params=p)
+
+    # ─────────────────────────────────────────────
+    # 3) Normal global search
+    # ─────────────────────────────────────────────
     else:
-        D, I  = faiss_index.search(np.array([q_vec]), k)            # D = L2 distances
+        D, I = faiss_index.search(np.array([q_vec]), k)
 
     now = datetime.now()
     results = []
@@ -242,7 +287,7 @@ def search_pdfs(
         else:
             weighted = similarity * date_weight
 
-        if similarity < weighted:
+        if weighted < threshold:
             continue
 
         results.append({
@@ -271,9 +316,10 @@ def make_search_cache_key(
     alpha: float,
     max_snippet_length: int,
     threshold: float,
-    year: int | None
+    year: int | None,
+    years_back: int | None
 ) -> str:
-    raw = f"{query}|{k}|{alpha}|{max_snippet_length}|{threshold}|{year}"
+    raw = f"{query}|{k}|{alpha}|{max_snippet_length}|{threshold}|{year}|{years_back}"
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
@@ -297,12 +343,13 @@ def search_pdfs_cached(
         max_snippet_length: int = 500,
         threshold: float = 0.0,
         year2vec: dict[int, np.ndarray] | None  = None,
-        year: int | None = None
+        year: int | None = None,
+        years_back: int | None = None
     ) -> list[dict]:
     if not query:
         return []
 
-    cache_key = make_search_cache_key(query, k, alpha, max_snippet_length, threshold, year)
+    cache_key = make_search_cache_key(query, k, alpha, max_snippet_length, threshold, year, years_back)
     cached = cached_search_results(cache_key)
     if cached:
         return cached
@@ -319,6 +366,7 @@ def search_pdfs_cached(
             threshold=threshold,
             year2vec=year2vec,
             year=year,
+            years_back=years_back
         )
 
         store_search_results(cache_key, results)
@@ -338,26 +386,19 @@ def decide_rag(
     """
     sys = SystemMessage(
         content=(
-            "You are a routing controller. "
-            "Analyse the user's latest message AND the recent conversation. "
-            "If the assistant can answer without consulting Transport & Environment's and Clean City Campaign's internal documents, "
-            "return: {\"use_rag\": false, \"query\": \"\"}. "
+            "You are a search-query generator for a retrieval-augmented generation (RAG) system. "
+            "Analyse the user's latest message AND recent conversation. "
 
-            "If the question is related to Transport & Environment or Clean City Campaign's work (climate, cities, traffic, transport, vans, trucks, aviation, shipping, clean cities, decarbonisation, energy, biofuels, e-fuels, grids, batteries, co2, rail, green finance, etc.), set use_rag to true and generate a precise, minimal search query "
-            f"(≤ {max_query_tokens} tokens) that would retrieve relevant documents. "
+            "Your task is to generate a precise, minimal search query "
+            f"(≤ {max_query_tokens} tokens) that would retrieve documents needed to answer the question. "
 
-            "Disambiguate similar terms. For example, if the user mentions 'UCO', "
-            "treat it as 'Used Cooking Oil' unless explicitly stated otherwise. "
-            "Avoid inserting or hallucinating organization names like 'Transport & Environment' "
-            "unless the user actually mentioned them. "
+            "Disambiguate similar terms (e.g. 'UCO' → Used Cooking Oil unless stated otherwise). "
+            "Avoid adding organization names unless explicitly mentioned by the user. "
+            "Avoid vague or bloated queries; focus on technical, regulatory, or factual terms only. "
 
-            "Avoid bloated or vague queries. Focus on the technical, regulatory, or factual content "
-            "needed to answer the user's question. "
-
-            "Only return the JSON output with the keys: use_rag and query."
+            "Return ONLY valid JSON in the form: {\"query\": \"...\"}."
         )
     )
-
 
     # Keep just the last few turns to save tokens
     latest_turns = history[-6:]  # tweak as needed
@@ -373,15 +414,12 @@ def decide_rag(
         model_name=config.TRIAGE_MODEL,
         openai_api_key=openai_api_key,
     )
-
     answer = router.invoke(messages).content
     try:
         j = json.loads(answer)
-        return bool(j.get("use_rag")), j.get("query", "")
+        return True, j.get("query", "")
     except Exception:
-        # fail safe: default to RAG with the raw prompt
         return True, prompt
-
 
 
 def yield_answer_with_citations(
@@ -478,7 +516,8 @@ def chat_rag(
     max_snippet_length: int = 500,
     callbacks: list | None = None,
     openai_api_key: str | None = None,
-    llm_model: str = "gpt-4o-mini"
+    llm_model: str = "gpt-4o-mini",
+    years_back: int = 5
 ) -> Generator[str, None, None]:
     """
     Streaming generator:
@@ -501,13 +540,15 @@ def chat_rag(
             k=k,
             alpha=alpha,
             max_snippet_length=max_snippet_length,
+            years_back=years_back
         )
 
         context_blocks = []
         for idx, d in enumerate(docs, start=1):
             title, url = d.get("title", "Untitled"), d.get("url", "#")
             snippet = d.get("snippet", "").replace("\n", " ").strip()
-            context_blocks.append(f"[{idx}] {title} — {url}\n{snippet}")
+            year = d.get("publication_date", "")
+            context_blocks.append(f"[{idx}] {title} ({year}) — {url}\n{snippet}")
         context = "\n\n".join(context_blocks)
 
         sys_ctx = SystemMessage(
@@ -517,6 +558,8 @@ def chat_rag(
             )
         )
         sys_docs = SystemMessage(content=f"Context documents:\n\n{context}")
+
+        print(f"Het context {sys_docs}")
     else:
         docs = []          # empty – will suppress the Sources block later
         sys_ctx = SystemMessage(

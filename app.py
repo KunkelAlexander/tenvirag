@@ -339,13 +339,13 @@ try:
                         # 2·2 fire your RAG wrapper; it returns a generator of chunks
                         stream = search.chat_rag(
                             user_prompt,
-                            history      = history_for_llm,                 # NEW
-                            faiss_index  = st.session_state.index,
-                            embeddings   = st.session_state.embeddings,
-                            mapping_df   = st.session_state.mapping,
-                            pages_df     = st.session_state.pages,
-                            k            = st.session_state.n_search_results,
-                            alpha        = st.session_state.alpha,
+                            history            = history_for_llm,                 # NEW
+                            faiss_index        = st.session_state.index,
+                            embeddings         = st.session_state.embeddings,
+                            mapping_df         = st.session_state.mapping,
+                            pages_df           = st.session_state.pages,
+                            k                  = st.session_state.n_search_results,
+                            alpha              = st.session_state.alpha,
                             max_snippet_length = st.session_state.max_snippet_length,
                             openai_api_key     = get_api_key(),
                             llm_model          = st.session_state.selected_model
