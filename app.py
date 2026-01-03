@@ -16,8 +16,14 @@ try:
         initial_sidebar_state="expanded"   # Options: "auto", "expanded", "collapsed"
     )
 
+
     # Sidebar with logo and dropdown
-    st.sidebar.image("assets/logo.png", use_container_width=True)
+    # choose the keyword based on what the current API exposes
+    if "width" in inspect.signature(st.sidebar.image).parameters:
+        st.sidebar.image("assets/logo.png", width='stretch')
+    else:
+        st.sidebar.image("assets/logo.png", use_column_width=True)
+
 
     TAB_CHAT     = "💬 Chat"
     TAB_SEARCH   = "❓Search"
