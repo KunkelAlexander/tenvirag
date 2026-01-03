@@ -5,8 +5,12 @@ import config
 from config import INDEX_PATH, MAP_PATH, PAGES_PATH
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain.schema import SystemMessage, HumanMessage, AIMessage
-from typing import Generator, List, Tuple, Dict, Any, Set, Iterator
+try:
+    # Newer LangChain versions (0.1+)
+    from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+except ImportError:
+    # Older LangChain versions
+    from langchain.schema import SystemMessage, HumanMessage, AIMessagefrom typing import Generator, List, Tuple, Dict, Any, Set, Iterator
 from collections import defaultdict
 from operator   import itemgetter
 import json
@@ -59,7 +63,7 @@ def initialize_search_index(openai_api_key: str | None = None):
 
     # --- convenience column so we don't have to re-parse later -------------
     def _parse_year(date_str):
-        
+
         # Try fast ISO parsing first
         try:
             return datetime.fromisoformat(date_str).year
@@ -484,7 +488,7 @@ def chat_rag(
 
     # --- 1) router ----------------------------------------------------------
     use_rag, search_query = decide_rag(prompt, history, openai_api_key=openai_api_key)
-    
+
     # --- 2) retrieval if needed ---------------------------------------------
     if use_rag:
         docs = search_pdfs_cached(
