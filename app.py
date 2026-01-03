@@ -3,6 +3,7 @@ import search as search
 import time
 import inspect
 import config as config
+import bugreport
 
 # Set page configuration
 st.set_page_config(
@@ -99,6 +100,22 @@ with st.sidebar.expander("Settings"):
     st.slider("Position: hits per year",
               1, 5, value=3, step=1,
               key="position_hits")
+
+with st.sidebar.expander("🐞 Report a bug"):
+    bug_description = st.text_area(
+        "What went wrong?",
+        placeholder="Describe what you were doing and what happened…"
+    )
+    include_state = st.checkbox("Include technical details", value=True)
+
+    if st.button("Send report"):
+
+        bugreport.report_user_bug(
+            description=bug_description,
+            include_state=include_state,
+        )
+        st.success("Thanks! Bug report sent.")
+
 
 # --- Initialize Search Index Once ---
 if not st.session_state.initialized:
