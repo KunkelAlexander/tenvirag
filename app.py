@@ -134,6 +134,24 @@ def get_api_key():
     else:
         return None
 
+def is_auth_error(e: Exception) -> bool:
+    msg = str(e).lower()
+
+    return any(
+        s in msg
+        for s in [
+            "api key",
+            "invalid key",
+            "incorrect api key",
+            "authentication",
+            "unauthorized",
+            "401",
+            "403",
+            "permission",
+        ]
+    )
+
+
 def inject_theme_css():
     st.markdown(
         """
@@ -337,6 +355,11 @@ with tab_chat:
                     assistant_text = f"❌ {e}\n\nPlease enter a valid key in the sidebar and try again."
                     st.error(assistant_text)
 
+
+                    # only report *real* bugs
+                    if not is_auth_error(e):
+                        bugreport.report_exception(e)
+
             # 3 ▸ persist the assistant reply
             add_message("assistant", assistant_text)
 
@@ -459,6 +482,12 @@ with tab_position:
                     except Exception as e:
                         assistant_text = f"❌ {e}\n\nIf this is about authentification, please enter a valid key in the sidebar and try again."
                         st.error(assistant_text)
+
+
+                        # only report *real* bugs
+                        if not is_auth_error(e):
+                            bugreport.report_exception(e)
+
 
             st.caption(f"⏱️ {time.time()-start:.2f}s")
 
