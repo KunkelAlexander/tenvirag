@@ -516,7 +516,7 @@ try:
         unsafe_allow_html=True
     )
 
-except:
+except Exception as e:
     bugreport.report_exception(e)
 
     st.error(
