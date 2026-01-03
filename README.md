@@ -1,6 +1,7 @@
-# T&E Publication Search & Chat
+# TenviRAG
 
-A lightweight **research‑assistant platform** that lets you _index_ and _chat_ with large collections of PDF publications built with the help of LLMs.
+
+A lightweight **research‑assistant platform** that lets you _chat_ with T&E's publication built with the help of LLMs.
 It couples a **FAISS** vector store with a **Streamlit** UI that offers both RAG-powered search and an AI‑powered chat interface.
 
 <p align="center">
