@@ -14,10 +14,16 @@ st.set_page_config(
 
 # Sidebar with logo and dropdown
 # choose the keyword based on what the current API exposes
-if "use_container_width" in inspect.signature(st.sidebar.image).parameters:
-    st.sidebar.image("assets/logo.png", use_container_width=True)
+if "width" in inspect.signature(st.sidebar.image).parameters:
+    st.sidebar.image("assets/logo.png", width='stretch')
 else:
     st.sidebar.image("assets/logo.png", use_column_width=True)
+
+TAB_CHAT     = "💬 Chat"
+TAB_SEARCH   = "❓Search"
+TAB_CHRONO   = "📅 Chronological"
+TAB_POSITION = "📜 Position"
+
 
 # --- Default Session-State Values ---
 def _init_state(defaults: dict):
@@ -33,8 +39,13 @@ _init_state({
     "selected_model": config.DEFAULT_MODEL,
     "chat_history": [],
     "n_chrono_search_results": 3,
-    "chrono_similarity_threshold": 75
+    "chrono_similarity_threshold": 75,
+    "active_tab": TAB_CHAT,
 })
+
+
+def _set_active_tab(tab_label: str):
+    st.session_state.active_tab = tab_label
 
 with st.sidebar:
     if "use_container_width" in inspect.signature(st.button).parameters:
@@ -58,13 +69,13 @@ with st.sidebar.expander("Settings"):
 
     # Dropdown for selecting OpenAI model
     model_options = [
-        "gpt-4o-mini",         
-        "o4-mini",    
+        "gpt-4o-mini",
+        "o4-mini",
         "gpt-5-nano",
-        "gpt-4.1-nano",        
-        "gpt-4.1-mini",        
-        "gpt-4.1",             
-        "o3-mini",             
+        "gpt-4.1-nano",
+        "gpt-4.1-mini",
+        "gpt-4.1",
+        "o3-mini",
     ]
 
     st.selectbox("🤖 Choose OpenAI model", model_options, key="selected_model")
@@ -190,12 +201,20 @@ def display_result(result):
 
 
 # --- Layout with Tabs ---
-tab_chat, tab_search, tab_chrono, tab_position = st.tabs(["💬 Chat", "❓Search", "📅 Chronological", "📜 Position"])
-
+tab_chat, tab_search, tab_chrono, tab_position = st.tabs(
+    [TAB_CHAT, TAB_SEARCH, TAB_CHRONO, TAB_POSITION],
+    default=st.session_state.active_tab,
+)
 
 with tab_search:
     # --- Search Bar ---
-    query = st.text_input("Enter your query:", key="search_query", placeholder="Type a sentence or keywords...")
+    query = st.text_input(
+        "Enter your query:",
+        key="search_query",
+        placeholder="Type a sentence or keywords...",
+        on_change=_set_active_tab,
+        args=(TAB_SEARCH,),
+    )
 
     # --- Perform Search ---
     if query:
@@ -241,7 +260,12 @@ with tab_chat:
             st.rerun()
     else:
         # ── get user input ───────────────────────────────────────────
-        user_prompt = st.chat_input("Ask me anything about the documents …", key="chatbox")
+        user_prompt = st.chat_input(
+            "Ask me anything about the documents …",
+            key="chatbox",
+            on_submit=_set_active_tab,
+            args=(TAB_CHAT,),
+        )
 
         # ── 1) one container for every bubble ───────────────────────────
         chat_container = st.container()
@@ -304,7 +328,12 @@ with tab_chat:
 
 
 with tab_chrono:
-    chrono_q = st.text_input("Enter your query:", key="chrono_query")
+    chrono_q = st.text_input(
+        "Enter your query:",
+        key="chrono_query",
+        on_change=_set_active_tab,
+        args=(TAB_CHRONO,),
+    )
 
     if chrono_q:
         st.write(f"#### Chronological results for: `{chrono_q}`")
@@ -361,7 +390,10 @@ with tab_position:
 
         topic_q = st.text_input(
             "What T&E position would you like to trace?",
-            placeholder="e.g. indirect land-use change"
+            placeholder="e.g. indirect land-use change",
+            key="position_query",
+            on_change=_set_active_tab,
+            args=(TAB_POSITION,),
         )
 
         if topic_q:
