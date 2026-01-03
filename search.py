@@ -10,7 +10,8 @@ try:
     from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 except ImportError:
     # Older LangChain versions
-    from langchain.schema import SystemMessage, HumanMessage, AIMessagefrom typing import Generator, List, Tuple, Dict, Any, Set, Iterator
+    from langchain.schema import SystemMessage, HumanMessage, AIMessage
+from typing import Generator, List, Tuple, Dict, Any, Set, Iterator
 from collections import defaultdict
 from operator   import itemgetter
 import json
