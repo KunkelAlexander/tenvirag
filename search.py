@@ -1096,7 +1096,7 @@ def build_context_blocks(docs: list[dict], *, max_chars: int = DEFAULT_CONTEXT_M
     kept: list[dict] = []
     used_chars = 0
 
-    for idx, d in enumerate(docs, start=1):
+    for d in docs:
         title = clean_text(str(d.get("title") or "Untitled"), max_chars=220)
         url = d.get("url") or d.get("pdf_url") or "#"
         date = d.get("publication_date") or "unknown date"
@@ -1107,6 +1107,7 @@ def build_context_blocks(docs: list[dict], *, max_chars: int = DEFAULT_CONTEXT_M
         if not snippet:
             continue
 
+        idx = len(kept) + 1  # always consecutive — no gaps even when docs are skipped
         bits = [f"[{idx}] {title}", f"Date: {date}", f"Type: {pub_type}", f"URL: {url}"]
         if summary:
             bits.append(f"Summary: {summary}")
@@ -1202,8 +1203,9 @@ def yield_answer_with_citations(
         title = clean_text(str(doc.get("title") or "Untitled"), max_chars=220)
         pub_date = doc.get("publication_date") or ""
         pub_type = doc.get("publication_type") or "Unknown"
-        snippet = clean_text(doc.get("snippet", ""), max_chars=500)
-        yield f"[^{ref}]: {pub_date} - [{title}]({link}) - {pub_type}.\n*{snippet}*\n"
+        snippet = clean_text(doc.get("snippet") or doc.get("summary") or "", max_chars=500)
+        excerpt = f"\n*{snippet}*" if snippet else ""
+        yield f"[^{ref}]: {pub_date} - [{title}]({link}) - {pub_type}.{excerpt}\n"
 
 
 # ---------------------------------------------------------------------------
