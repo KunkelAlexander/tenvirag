@@ -58,6 +58,7 @@ with st.sidebar.expander("Settings"):
 
     # Dropdown for selecting OpenAI model
     model_options = [
+        "gpt-5.4-mini",
         "gpt-4o-mini",         
         "o4-mini",    
         "gpt-5-nano",
