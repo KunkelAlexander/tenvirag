@@ -155,8 +155,13 @@ def inject_theme_css():
 
 inject_theme_css()
 
+_DISPLAY_SNIPPET_CHARS = 300
+
 def display_result(result):
-    similarity_percentage = int(result["weighted_score"] * 100)  # Convert to percentage
+    similarity_percentage = min(100, int(result["weighted_score"] * 100))
+    snippet = result["snippet"]
+    if len(snippet) > _DISPLAY_SNIPPET_CHARS:
+        snippet = snippet[:_DISPLAY_SNIPPET_CHARS].rsplit(" ", 1)[0] + " …"
 
     html_content = f"""
     <div style="
@@ -180,7 +185,7 @@ def display_result(result):
     </h3>
 
     <p style="color: var(--snippet-colour); font-size: 12px; margin-top: 8px;">
-        {result['snippet']}
+        {snippet}
     </p>
     </div>
     """

@@ -1177,8 +1177,13 @@ def yield_answer_with_citations(
         token = chunk.content or ""
         buffer += token
         if len(buffer) > 600 or any(sep in buffer for sep in (". ", "\n")):
-            yield _flush(buffer)
-            buffer = ""
+            i = buffer.rfind("[")
+            if i != -1 and "]" not in buffer[i:]:
+                yield _flush(buffer[:i])
+                buffer = buffer[i:]
+            else:
+                yield _flush(buffer)
+                buffer = ""
 
     if buffer:
         yield _flush(buffer)
