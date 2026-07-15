@@ -39,7 +39,12 @@ import streamlit as st
 
 import config
 from config import INDEX_PATH, MAP_PATH, PAGES_PATH
-from langchain.schema import AIMessage, HumanMessage, SystemMessage
+try:
+    # Newer LangChain versions (0.1+)
+    from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+except ImportError:
+    # Older LangChain versions
+    from langchain.schema import AIMessage, HumanMessage, SystemMessage
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
