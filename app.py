@@ -5,8 +5,7 @@ import inspect
 import config as config
 import bugreport
 
-try:
-
+try: 
     # Set page configuration
     st.set_page_config(
         page_title="AI Search",  # Title shown in the browser tab
@@ -16,13 +15,14 @@ try:
     )
 
     # Sidebar with logo and dropdown
-    # choose the keyword based on what the current API exposes
-    if "width" in inspect.signature(st.sidebar.image).parameters:
+    # choose the keyword based on what the current API supports
+    try:
         st.sidebar.image("assets/logo.png", width='stretch')
-    elif "use_container_width" in inspect.signature(st.sidebar.image).parameters:
-        st.sidebar.image("assets/logo.png", use_container_width=True)
-    else:
-        st.sidebar.image("assets/logo.png", use_column_width=True)
+    except TypeError:
+        if "use_container_width" in inspect.signature(st.sidebar.image).parameters:
+            st.sidebar.image("assets/logo.png", use_container_width=True)
+        else:
+            st.sidebar.image("assets/logo.png", use_column_width=True)
 
     TAB_CHAT     = "💬 Chat"
     TAB_SEARCH   = "❓Search"
@@ -61,16 +61,20 @@ try:
     with st.sidebar.expander("Settings"):
 
         key = st.text_input(
-            "🔑 Enter your OpenAI API key or password",
-            type="password"
+            "🔑 Enter your API key or password",
+            type="password",
+            help="Enter the API key matching the model you select below (OpenAI or Anthropic)."
             )
         if key:
             st.session_state.API_KEY = key
             st.success("✅ API key saved!")
         st.slider("# Search Results", 5, 100, step=5, key="n_search_results")
 
-        # Dropdown for selecting OpenAI model
+        # Dropdown for selecting the chat model (OpenAI or Claude)
         model_options = [
+            "claude-sonnet-5",
+            "claude-opus-4-8",
+            "claude-haiku-4-5",
             "gpt-5.4-mini",
             "gpt-4o-mini",
             "o4-mini",
@@ -81,7 +85,7 @@ try:
             "o3-mini",
         ]
 
-        st.selectbox("🤖 Choose OpenAI model", model_options, key="selected_model")
+        st.selectbox("🤖 Choose model", model_options, key="selected_model")
 
         st.slider("Relevancy of more recent results", 0.0, 0.5, value = 0.01, step=0.01, key="alpha")
         st.slider("Length of snippets", 0, 2000, value=1000, step=50, key="max_snippet_length")
@@ -100,8 +104,8 @@ try:
                 0, 100, value=30, step=5,
                 key="position_similarity")
         st.slider("Position: hits per year",
-                  1, 5, value=3, step=1,
-                  key="position_hits")
+                    1, 5, value=3, step=1,
+                    key="position_hits")
 
     with st.sidebar.expander("🐞 Report a bug"):
         bug_description = st.text_area(
@@ -123,10 +127,12 @@ try:
         st.session_state.update({"index": index, "embeddings": embeddings, "mapping": mapping, "pages": pages, "year2vec": year2vec, "initialized": True})
 
     # Function to get the correct key (never exposing the secret directly)
-    def get_api_key():
+    def get_api_key(model_name: str | None = None):
+        model_name = model_name or st.session_state.selected_model
+        secret_name = "ANTHROPIC_API_KEY" if model_name.startswith("claude-") else "OPENAI_API_KEY"
         if st.session_state.API_KEY and st.session_state.API_KEY.startswith("streamlit_"):
             if st.session_state.API_KEY == st.secrets["APP_PASSWORD"]:
-                return st.secrets["OPENAI_API_KEY"]
+                return st.secrets[secret_name]
             else:
                 return None
         elif st.session_state.API_KEY:
@@ -156,20 +162,20 @@ try:
             <style>
             /* ---------- colour tokens ---------- */
             :root {
-              /* light mode defaults */
-              --card-bg       : #ffffff;
-              --card-border   : #cccccc;
-              --meta-colour   : #006621;  /* green */
-              --link-colour   : #1a0dab;  /* Google‑blue */
-              --snippet-colour: #4d5156;  /* grey */
+                /* light mode defaults */
+                --card-bg       : #ffffff;
+                --card-border   : #cccccc;
+                --meta-colour   : #006621;  /* green */
+                --link-colour   : #1a0dab;  /* Google‑blue */
+                --snippet-colour: #4d5156;  /* grey */
 
-              --disclaimer-fg : black;
-              --disclaimer-bg : #fdf6e3;
-              --disclaimer-border : #f39c12;
+                --disclaimer-fg : black;
+                --disclaimer-bg : #fdf6e3;
+                --disclaimer-border : #f39c12;
             }
 
             @media (prefers-color-scheme: dark) {
-              :root {
+                :root {
                 --card-bg       : #262730;
                 --card-border   : #3a3a3a;
                 --meta-colour   : #34a853;
@@ -179,7 +185,7 @@ try:
                 --disclaimer-fg : white;
                 --disclaimer-bg : #333;
                 --disclaimer-border : #f39c12;
-              }
+                }
             }
 
             /* Footer disclaimer style using tokens */
@@ -239,8 +245,7 @@ try:
 
     # --- Layout with Tabs ---
     tab_chat, tab_search, tab_chrono, tab_position = st.tabs(
-        [TAB_CHAT, TAB_SEARCH, TAB_CHRONO, TAB_POSITION],
-        default=st.session_state.active_tab,
+        [TAB_CHAT, TAB_SEARCH, TAB_CHRONO, TAB_POSITION]
     )
 
 
@@ -467,7 +472,7 @@ try:
                                 mapping_df         = st.session_state.mapping,
                                 pages_df           = st.session_state.pages,
                                 year2vec           = st.session_state.year2vec,
-                                openai_api_key     = get_api_key(),
+                                openai_api_key     = get_api_key(config.TRIAGE_MODEL),
                                 alpha              = st.session_state.alpha,
                                 max_snippet_length = st.session_state.max_snippet_length,
                                 k_per_year         = st.session_state.position_hits,

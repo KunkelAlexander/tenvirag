@@ -4,9 +4,9 @@ import os
 EMBEDDING_MODEL      = "intfloat/multilingual-e5-small"
 SEARCH_RESULT_K      = 5
 
-DEFAULT_MODEL           = "gpt-5.4-mini"
-TRIAGE_MODEL            = "gpt-5.4-mini"
-TIMELINE_MODEL          = "gpt-5.4-mini"
+DEFAULT_MODEL           = "claude-sonnet-5"
+TRIAGE_MODEL            = "claude-haiku-4-5"
+TIMELINE_MODEL          = "claude-sonnet-5"
 
 TOP_HITS_PER_YEAR       = 3   
 SIMILARITY_THRESHOLD    = 0.75
@@ -46,4 +46,6 @@ EMBEDDING_QUERY_PREFIX = "query: "
 #EMBEDDING_QUERY_PREFIX = None
 
 ANSWER_TEMPERATURE = 0.0
+ANSWER_MAX_TOKENS = 4096
+TIMELINE_MAX_TOKENS = 4096
 SEARCH_VERSION = "rag-v2.1"

@@ -45,6 +45,7 @@ try:
 except ImportError:
     # Older LangChain versions
     from langchain.schema import AIMessage, HumanMessage, SystemMessage
+from langchain_anthropic import ChatAnthropic
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
@@ -314,6 +315,15 @@ def _parse_datetime(date_value: Any) -> datetime | None:
 def _parse_year(date_value: Any) -> int | None:
     dt = _parse_datetime(date_value)
     return dt.year if dt else None
+
+
+def _make_chat_model(model_name: str, *, api_key: str | None, **kwargs):
+    """Return a LangChain chat model for either OpenAI or Anthropic, by model name prefix."""
+    if model_name.startswith("claude-"):
+        # Recent Claude models (adaptive thinking) reject the temperature/top_p/top_k params.
+        kwargs.pop("temperature", None)
+        return ChatAnthropic(model=model_name, anthropic_api_key=api_key, **kwargs)
+    return ChatOpenAI(model_name=model_name, openai_api_key=api_key, **kwargs)
 
 
 def _make_embeddings(openai_api_key: str | None = None):
@@ -670,7 +680,11 @@ def _rerank_results(query: str, docs: list[dict], *, limit: int) -> list[dict]:
     if _reranker is None:
         return docs[:limit]
 
-    pairs = [(query, f"{d.get('title') or ''}\n{d.get('snippet') or ''}") for d in docs]
+    # Docs arrive pre-sorted by combined_score; only the CrossEncoder's opinion on the
+    # top candidates can change the final ranking, so cap how many pairs we score.
+    candidates = docs[: max(limit * 3, 20)]
+
+    pairs = [(query, f"{d.get('title') or ''}\n{d.get('snippet') or ''}") for d in candidates]
     try:
         raw_scores = _reranker.predict(pairs)
         raw_scores = [float(x) for x in np.asarray(raw_scores).reshape(-1).tolist()]
@@ -679,7 +693,7 @@ def _rerank_results(query: str, docs: list[dict], *, limit: int) -> list[dict]:
 
     norm_scores = _minmax(raw_scores)
     reranked: list[dict] = []
-    for doc, rr_raw, rr_norm in zip(docs, raw_scores, norm_scores):
+    for doc, rr_raw, rr_norm in zip(candidates, raw_scores, norm_scores):
         item = doc.copy()
         item["reranker_score"] = float(rr_raw)
         item["reranker_score_norm"] = float(rr_norm)
@@ -775,8 +789,14 @@ def search_pdfs(
     threshold: float = 0.0,
     year2vec: dict[int, np.ndarray] | None = None,
     year: int | None = None,
+    rerank: bool = True,
 ) -> list[dict]:
-    """Hybrid (FAISS + BM25) search with RRF fusion and optional CrossEncoder reranking."""
+    """Hybrid (FAISS + BM25) search with RRF fusion and optional CrossEncoder reranking.
+
+    Set rerank=False when this is one of several query variants that will be fused
+    and reranked together later (see search_pdfs_multiquery_cached) — this avoids
+    running the CrossEncoder once per variant.
+    """
     query = clean_text(query)
     if not query:
         return []
@@ -829,9 +849,9 @@ def search_pdfs(
     if _bm25_cache is not None and year is None:
         bm25_docs = _bm25_search(query, pages_df, k=int(k) * 2, alpha=alpha, max_snippet_length=max_snippet_length)
         if bm25_docs:
-            return _fuse_ranked_results(query, [faiss_docs, bm25_docs], k=int(k))
+            return _fuse_ranked_results(query, [faiss_docs, bm25_docs], k=int(k), rerank=rerank)
 
-    return _rerank_results(query, faiss_docs, limit=int(k))
+    return _rerank_results(query, faiss_docs, limit=int(k)) if rerank else faiss_docs[: int(k)]
 
 
 # ---------------------------------------------------------------------------
@@ -853,6 +873,7 @@ def make_search_cache_key(
     max_snippet_length: int,
     threshold: float,
     year: int | None,
+    rerank: bool = True,
 ) -> str:
     raw = "|".join(
         [
@@ -865,6 +886,7 @@ def make_search_cache_key(
             _normalise_cache_value(threshold),
             _normalise_cache_value(year),
             _normalise_cache_value(_cfg("RERANKER_MODEL", None)),
+            _normalise_cache_value(rerank),
         ]
     )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -893,12 +915,13 @@ def search_pdfs_cached(
     threshold: float = 0.0,
     year2vec: dict[int, np.ndarray] | None = None,
     year: int | None = None,
+    rerank: bool = True,
 ) -> list[dict]:
     query = clean_text(query)
     if not query:
         return []
 
-    cache_key = make_search_cache_key(query, k, alpha, max_snippet_length, threshold, year)
+    cache_key = make_search_cache_key(query, k, alpha, max_snippet_length, threshold, year, rerank)
     cached = cached_search_results(cache_key)
     if cached is not None:
         return cached
@@ -915,6 +938,7 @@ def search_pdfs_cached(
         threshold=threshold,
         year2vec=year2vec,
         year=year,
+        rerank=rerank,
     )
     store_search_results(cache_key, results)
     return results
@@ -975,7 +999,7 @@ def make_multiquery_cache_key(
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def _fuse_ranked_results(query: str, ranked_lists: Sequence[list[dict]], *, k: int) -> list[dict]:
+def _fuse_ranked_results(query: str, ranked_lists: Sequence[list[dict]], *, k: int, rerank: bool = True) -> list[dict]:
     fused: dict[str, dict] = {}
 
     for list_idx, hits in enumerate(ranked_lists):
@@ -1022,7 +1046,7 @@ def _fuse_ranked_results(query: str, ranked_lists: Sequence[list[dict]], *, k: i
         results.append(item)
 
     results.sort(key=lambda x: x.get("combined_score", 0.0), reverse=True)
-    return _rerank_results(query, results, limit=k)
+    return _rerank_results(query, results, limit=k) if rerank else results[:k]
 
 
 def search_pdfs_multiquery_cached(
@@ -1068,6 +1092,7 @@ def search_pdfs_multiquery_cached(
             threshold=threshold,
             year2vec=year2vec,
             year=year,
+            rerank=False,  # rerank once below, after fusing all variants
         )
         for q in queries
     ]
@@ -1130,6 +1155,25 @@ def build_context_blocks(docs: list[dict], *, max_chars: int = DEFAULT_CONTEXT_M
     return "\n\n".join(blocks), kept
 
 
+def _content_to_text(content: Any) -> str:
+    """Normalise a LangChain message's `.content` to plain text.
+
+    OpenAI models return a string; Anthropic models can return a list of
+    content blocks (e.g. text/thinking blocks) instead.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict) and block.get("type") == "text":
+                parts.append(block.get("text", ""))
+        return "".join(parts)
+    return str(content) if content else ""
+
+
 def _citation_regex() -> re.Pattern:
     return re.compile(
         r"(?<!\[\^)"                  # ignore already-converted footnotes
@@ -1179,7 +1223,7 @@ def yield_answer_with_citations(
         return out
 
     for chunk in model.stream(messages):
-        token = chunk.content or ""
+        token = _content_to_text(chunk.content)
         buffer += token
         if len(buffer) > 600 or any(sep in buffer for sep in (". ", "\n")):
             i = buffer.rfind("[")
@@ -1280,12 +1324,13 @@ def chat_rag(
         HumanMessage(content=prompt),
     ]
 
-    model = ChatOpenAI(
-        model_name=llm_model,
+    model = _make_chat_model(
+        llm_model,
+        api_key=openai_api_key,
         streaming=True,
         callbacks=callbacks,
-        openai_api_key=openai_api_key,
         temperature=float(_cfg("ANSWER_TEMPERATURE", 0.0)),
+        max_tokens=config.ANSWER_MAX_TOKENS,
     )
 
     yield from yield_answer_with_citations(model, messages, docs, emit_sources=bool(docs))
@@ -1376,13 +1421,13 @@ def position_timeline(
         "Snippets:\n" + "\n\n".join(triage_chunks)
     )
 
-    triager = ChatOpenAI(
-        model_name=triage_model,
-        openai_api_key=openai_api_key,
+    triager = _make_chat_model(
+        triage_model,
+        api_key=openai_api_key,
         temperature=0,
     )
     try:
-        triage_reply = triager.invoke([HumanMessage(content=triage_prompt)]).content
+        triage_reply = _content_to_text(triager.invoke([HumanMessage(content=triage_prompt)]).content)
         keep_ids = set(_parse_json_list(triage_reply))
     except Exception:
         keep_ids = set(range(1, len(all_hits) + 1))
@@ -1424,13 +1469,15 @@ def position_timeline(
         )
     )
 
-    model = ChatOpenAI(
-        model_name=timeline_model,
-        openai_api_key=openai_api_key,
+    model = _make_chat_model(
+        timeline_model,
+        api_key=openai_api_key,
         streaming=True,
+        max_tokens=config.TIMELINE_MAX_TOKENS,
     )
 
-    yield from yield_answer_with_citations(model, [sys_ctx], docs, emit_sources=True)
+    messages = [sys_ctx, HumanMessage(content=f"Compose the timeline for: {topic}")]
+    yield from yield_answer_with_citations(model, messages, docs, emit_sources=True)
 
 
 def make_timeline_cache_key(
